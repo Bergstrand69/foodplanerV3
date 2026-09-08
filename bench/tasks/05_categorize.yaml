@@ -122,7 +122,7 @@ cases:
           week_start: "2026-09-07"
           uncategorized: ["surdegsknäcke från Vretstorp", "tahini", "risvinäger",
                           "nduja", "kombucha", "bakplåtspapper", "harissapasta",
-                          "jäst"]
+                          "färsk jäst"]
     user: "Visa inköpslistan"
     grade:
       tool: set_item_prices
@@ -134,7 +134,7 @@ cases:
         "kombucha": "dryck"
         "bakplåtspapper": "övrigt"
         "harissapasta": "skafferi"
-        "jäst": "mejeri"
+        "färsk jäst": "mejeri"
 
   # A user-stated category is authoritative and must be flagged, so the model's
   # own later guesses never overwrite what the user decided.

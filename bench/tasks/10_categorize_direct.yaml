@@ -80,7 +80,7 @@ cases:
         "fryst kycklingfilé": "fryst"
 
   - id: cd-novel-products
-    user: "surdegsknäcke från Vretstorp, tahini, risvinäger, nduja, kombucha, bakplåtspapper, harissapasta, jäst"
+    user: "surdegsknäcke från Vretstorp, tahini, risvinäger, nduja, kombucha, bakplåtspapper, harissapasta, färsk jäst"
     grade:
       categories:
         "surdegsknäcke från Vretstorp": "bröd"
@@ -90,7 +90,7 @@ cases:
         "kombucha": "dryck"
         "bakplåtspapper": "övrigt"
         "harissapasta": "skafferi"
-        "jäst": "mejeri"
+        "färsk jäst": "mejeri"
 
   - id: cd-no-invented-shelf
     user: "blomkruka, batterier AA, tidning, blommor"
@@ -108,7 +108,7 @@ cases:
       gul lök, knäckebröd, kaffe, fiskpinnar, yoghurt, nötfärs, bananer,
       apelsinjuice, frysta räkor, diskmedel, kokosmjölk, färsk basilika, smör,
       tortillabröd, havredryck, toapapper, Bregott, Findus ärtor, tahini,
-      kombucha, nduja, jäst, gravad lax, frysta jordgubbar
+      kombucha, nduja, färsk jäst, gravad lax, frysta jordgubbar
     grade:
       categories:
         "gul lök": "frukt & grönt"
@@ -132,6 +132,6 @@ cases:
         "tahini": "skafferi"
         "kombucha": "dryck"
         "nduja": "kött & fisk"
-        "jäst": "mejeri"
+        "färsk jäst": "mejeri"
         "gravad lax": "kött & fisk"
         "frysta jordgubbar": "fryst"
