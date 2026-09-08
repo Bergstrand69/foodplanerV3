@@ -1,0 +1,95 @@
+suite: tool_choice
+description: >
+  Does the model reach for the right FoodPlanner tool? All 29 tools are in the
+  payload, so this also measures whether a 64k model can still route correctly
+  with ~6.5k tokens of verbose schema in front of it.
+mode: tools
+system: project
+
+cases:
+  - id: tc-open-app
+    user: "Öppna FoodPlanner"
+    grade:
+      tool: open_app
+      real_tool_names: true
+
+  - id: tc-week
+    user: "Vad har vi för mat i veckan?"
+    grade:
+      tool: get_weekly_plan
+      real_tool_names: true
+
+  - id: tc-search
+    user: "Har jag något recept med lax?"
+    grade:
+      tool: search_recipes
+      args_contain: {query: "lax"}
+
+  - id: tc-add-custom-item
+    user: "Lägg till diskmedel på inköpslistan"
+    grade:
+      tool: add_shopping_item
+      args_contain: {name: "diskmedel"}
+
+  - id: tc-import-url
+    user: "Kan du lägga in det här receptet? https://www.ica.se/recept/krispig-kycklingpasta-724019/"
+    grade:
+      tool: import_recipe
+      args_equal: {url: "https://www.ica.se/recept/krispig-kycklingpasta-724019/"}
+
+  # get_preferences and set_preferences are one letter apart in the payload and
+  # one is a write. Reading must not trigger the write.
+  - id: tc-read-prefs
+    user: "Vad har jag för matpreferenser sparade?"
+    grade:
+      tool: get_preferences
+      forbid_tools: [set_preferences]
+
+  # A date span, not an ISO week: get_shopping_session, never the week list.
+  - id: tc-date-range
+    user: "Jag ska handla för torsdag till och med nästa onsdag. Visa vad jag behöver."
+    grade:
+      tool_in: [get_shopping_session, set_shopping_dates]
+      forbid_tools: [get_plan_shopping_list]
+
+  # Ad-hoc, explicitly nothing saved: build_shopping_list, not the week's list.
+  - id: tc-adhoc-list
+    user: "Vad behöver jag köpa för att laga tacos och lasagne i helgen? Det ska inte sparas i veckoplanen."
+    grade:
+      tool_in: [build_shopping_list, search_recipes]
+      forbid_tools: [get_plan_shopping_list, swap_meal]
+
+  - id: tc-restyle
+    user: "Kan du göra inköpslistan mer kompakt, med större bockrutor?"
+    grade:
+      tool: customize_ui
+      args_equal: {view: "shopping"}
+
+  - id: tc-reset-ui
+    user: "Nej, gå tillbaka till den vanliga inköpslistan igen"
+    grade:
+      tool: reset_ui
+      args_equal: {view: "shopping"}
+
+  - id: tc-sync
+    user: "Ett recept jag lade till i Drive för en stund sedan dyker inte upp när jag söker"
+    grade:
+      tool: sync_recipes
+
+  - id: tc-editor
+    context:
+      - role: tool_result
+        tool: search_recipes
+        result:
+          recipes:
+            - {drive_file_id: "1aB_kottbullar", title: "Köttbullar med potatismos", tags: [middag, husman]}
+    user: "Jag vill ändra det receptet själv i ett formulär"
+    grade:
+      tool: edit_recipe
+      args_equal: {drive_file_id: "1aB_kottbullar"}
+
+  - id: tc-week-note
+    user: "På lördag äter vi hos mormor, så planera bara sex middagar den här veckan"
+    grade:
+      tool_in: [set_week_notes, get_weekly_plan]
+      forbid_tools: [swap_meal]

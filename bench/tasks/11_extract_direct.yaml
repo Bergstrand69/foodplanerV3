@@ -1,0 +1,120 @@
+suite: extract_direct
+description: >
+  Recipe parsing asked the way FoodPlanner 3.0 would ask it: a scripted call
+  with a strict JSON contract, no tool list, no conversation. The app already
+  knows the user pasted a recipe, so routing is not the model's problem.
+
+  Compare against `recipe_extract` to see what tool-calling overhead costs on
+  the flagship AI feature. Same sources, same graders.
+mode: json
+max_tokens: 8000
+system: |
+  Du omvandlar en rörig recepttext till strukturerad data.
+
+  Svara med ENDAST ett JSON-objekt, utan förklaring och utan kodstaket:
+  {
+    "title": "<rättens namn>",
+    "servings": <antal portioner som heltal, utelämna fältet om det inte går att avgöra>,
+    "tags": ["<taggar>"],
+    "ingredients": [{"name": "<vara>", "quantity": <tal>, "unit": "<enhet>"}],
+    "steps": [{"title": "<kort rubrik>", "content": "<ett moment>", "timer_seconds": <sekunder om steget innebär väntan>}]
+  }
+
+  Regler:
+  - Ta med ALLA ingredienser som nämns i källan, inklusive sådana som nämns
+    mitt i en mening istället för i en lista.
+  - Hitta ALDRIG på ingredienser som källan inte nämner. Lägg inte till salt,
+    peppar, smör eller olja "för att det brukar vara med".
+  - Ett steg per moment, i rätt ordning, med temperatur och tid i det steg som
+    behöver dem. Komprimera aldrig till "blanda allt och koka".
+  - Skriv på samma språk som källan.
+  - Ta bort talspråk, hashtaggar, emoji och kommentarer som inte är receptet.
+
+cases:
+  - id: xd-tiktok-caption
+    user: |
+      POV: du har 20 min och typ inget hemma 🍝😮‍💨 krämig tomatpasta som RÄDDAR
+      veckan. ni tar en förp pasta (jag kör penne), en burk krossade tomater,
+      en rejäl skvätt grädde typ 2 dl, 3 vitlöksklyftor, en näve riven parmesan
+      och massa basilika på slutet 🌿 fräs vitlöken i olivolja, häll i tomaterna,
+      låt puttra 10 min, i med grädden, koka pastan under tiden, blanda ihop
+      allt och toppa med parmesan + basilika. tacka mig sen 🙏
+      #matlagning #snabbmat #pastarecept #fyp #veckansmiddag
+    grade:
+      ingredients_include: [pasta, [krossade tomater, tomater], grädde, vitlök,
+                            parmesan, basilika, olivolja]
+      ingredients_exclude: [smör, gul lök, buljong, chiliflakes, socker]
+      recipe_json: {min_ingredients: 6, min_steps: 4}
+      ingredient_count: {min: 6, max: 10}
+      regex_absent: {pattern: '#fyp|tacka mig sen', why: "hashtags and chatter in the recipe file"}
+
+  - id: xd-video-transcript
+    user: |
+      "okej hej allihopa idag ska vi göra min mammas ugnsbakade lax alltså den
+      är sjukt enkel. ni tar en laxsida typ 800 gram, lägger den på en plåt med
+      bakplåtspapper. sen blandar ni ihop... vänta jag tar skålen... ni blandar
+      typ en halv deciliter majonnäs, lika mycket creme fraiche, en pressad
+      vitlöksklyfta och en näve färsk dill som ni hackar. åh och lite citron,
+      typ ett halvt, både skalet och saften. bred på det där över laxen. in i
+      ugnen 200 grader i 20 minuter ungefär, den ska vara precis genomgången.
+      servera med kokt potatis. jättegott. hej då!"
+    grade:
+      ingredients_include: [lax, majonnäs, [creme fraiche, crème fraiche, gräddfil],
+                            vitlök, dill, citron, potatis]
+      ingredients_exclude: [salt, peppar, smör, olivolja, senap]
+      recipe_json: {min_ingredients: 6, min_steps: 4}
+      field_between: {path: servings, min: 3, max: 6, optional: true}
+      regex_absent: {pattern: 'vänta jag tar skålen|hej då|allihopa', why: "spoken filler kept"}
+
+  - id: xd-handwritten-card
+    user: |
+      Mormors sockerkaka
+      3 ägg, 3 dl socker, 3 dl vetemj0l, 1,5 tsk bakpulver,
+      100 g smör, 1 dl mjölk, 2 tsk vaniljsocker
+      Vispa ägg o socker pösigt. Blanda i det torra. Smält smöret,
+      rör i mjölken, vänd ner. Ugn 175 gr, 40 min i smord form.
+    grade:
+      ingredients_include: [ägg, socker, [vetemjöl, mjöl], bakpulver, smör,
+                            mjölk, vaniljsocker]
+      ingredients_exclude: [salt, kanel, grädde]
+      recipe_json: {min_ingredients: 7, min_steps: 3}
+      regex_absent: {pattern: 'vetemj0l', why: "OCR artefact copied through"}
+
+  - id: xd-comment-thread
+    user: |
+      Inlägg: "Bästa linsgrytan jag gjort 🧡 recept i kommentarerna!"
+      @sara_k: "Åh den ser fantastisk ut!!"
+      @matglad: "receptet tack 🙏🙏"
+      @original_poster: "Här kommer det! 3 dl röda linser, 1 gul lök, 2 morötter,
+        1 burk kokosmjölk, 2 msk röd currypaste, 5 dl grönsaksbuljong,
+        1 msk rapsolja. Fräs lök och morot i oljan 5 min, i med currypastan,
+        sen linser, kokosmjölk och buljong. Koka 20 min tills linserna är mjuka.
+        Smaka av med lime."
+      @sara_k: "Går det med gula linser?"
+      @original_poster: "Absolut, men de blir mosigare"
+      @kalle99: "gjorde denna igår, 10/10"
+    grade:
+      ingredients_include: [[röda linser, linser], [gul lök, lök], morötter,
+                            kokosmjölk, [currypaste, currypasta, röd currypaste],
+                            buljong, rapsolja, lime]
+      ingredients_exclude: [gula linser, vitlök, ingefära, spenat]
+      recipe_json: {min_ingredients: 7, min_steps: 3}
+      regex_absent: {pattern: '@sara_k|10/10|mosigare', why: "comment chatter kept"}
+
+  - id: xd-korvstroganoff
+    user: |
+      KORVSTROGANOFF (4 port)
+      400 g falukorv, 1 gul lök, 2 msk tomatpuré, 2 dl grädde, 1 dl vatten,
+      1 msk dijonsenap, 1 tsk paprikapulver, salt och peppar, ris till servering
+
+      Skär korven i stavar. Hacka löken. Stek korven i smör i en stor stekpanna
+      på medelvärme tills den får färg, ca 4 minuter. Tillsätt löken och stek
+      ytterligare 2 minuter. Rör ner tomatpurén och paprikapulvret och låt fräsa
+      en halv minut. Häll i grädde och vatten, rör i senapen och låt puttra utan
+      lock i 10 minuter. Smaka av med salt och peppar. Koka riset under tiden
+      enligt anvisningen på paketet. Servera korvstroganoffen över riset.
+    grade:
+      ingredients_include: [falukorv, [gul lök, lök], tomatpuré, grädde,
+                            [dijonsenap, senap], paprikapulver]
+      recipe_json: {min_ingredients: 8, min_steps: 5}
+      field_between: {path: servings, min: 4, max: 4}

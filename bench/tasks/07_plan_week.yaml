@@ -1,0 +1,82 @@
+suite: plan_week
+description: >
+  The headline feature. Given the user's own recipes and their stated rules,
+  produce a week that satisfies every constraint and persists each slot with a
+  real drive_file_id. Constraint satisfaction plus multi-call discipline, which
+  is where a small model usually either repeats a dish, drops a day, or invents
+  an id for a dish the user does not own.
+mode: tools
+system: project
+
+context:
+  - role: tool_result
+    tool: get_weekly_plan
+    result:
+      week_start: "2026-09-07"
+      notes: ""
+      days: []
+  - role: tool_result
+    tool: search_recipes
+    result:
+      recipes:
+        - {drive_file_id: "r_laxpasta",  title: "Laxpasta med spenat",       tags: [middag, snabb, fisk], minutes: 20}
+        - {drive_file_id: "r_linsgryta", title: "Linsgryta med kokos",        tags: [middag, vegetarisk], minutes: 35}
+        - {drive_file_id: "r_kottbullar",title: "Köttbullar med potatismos",  tags: [middag, husman],     minutes: 45}
+        - {drive_file_id: "r_halloumi",  title: "Halloumiwok med nudlar",     tags: [middag, vegetarisk, snabb], minutes: 20}
+        - {drive_file_id: "r_tacos",     title: "Fredagstacos",               tags: [middag, fredag],     minutes: 30}
+        - {drive_file_id: "r_fisksoppa", title: "Krämig fisksoppa",           tags: [middag, fisk],       minutes: 30}
+        - {drive_file_id: "r_lasagne",   title: "Lasagne al forno",           tags: [middag, helg],       minutes: 90}
+
+cases:
+  - id: pw-constraints
+    user: >
+      Planera middagar måndag till fredag. Onsdag ska vara vegetarisk, och
+      måndag, tisdag och torsdag måste gå på max 30 minuter eftersom vi har
+      träning. Ingen rätt får återkomma.
+    grade:
+      real_tool_names: true
+      plan:
+        days: [måndag, tisdag, onsdag, torsdag, fredag]
+        known_ids: [r_laxpasta, r_linsgryta, r_kottbullar, r_halloumi, r_tacos,
+                    r_fisksoppa, r_lasagne]
+        constraints:
+          no_repeats: true
+          day_must_be_one_of:
+            onsdag: [r_linsgryta, r_halloumi]
+            måndag: [r_laxpasta, r_halloumi, r_tacos, r_fisksoppa]
+            tisdag: [r_laxpasta, r_halloumi, r_tacos, r_fisksoppa]
+            torsdag: [r_laxpasta, r_halloumi, r_tacos, r_fisksoppa]
+
+  # The collection genuinely cannot satisfy this. Saying so beats inventing.
+  - id: pw-admits-shortfall
+    user: >
+      Planera sju veganska middagar den här veckan, en för varje dag.
+    grade:
+      ids_from_set:
+        known: [r_laxpasta, r_linsgryta, r_kottbullar, r_halloumi, r_tacos,
+                r_fisksoppa, r_lasagne]
+        paths: [drive_file_id]
+      contains_any: ["räcker inte", "för få", "bara", "saknar", "importera",
+                     "lägga till", "inte tillräckligt", "endast"]
+      swedish: true
+
+  # A single change to an existing plan must move one slot, not rebuild the week.
+  - id: pw-single-swap
+    context:
+      - role: tool_result
+        tool: get_weekly_plan
+        result:
+          week_start: "2026-09-07"
+          days:
+            - {day: 0, day_name: "Måndag",  meals: [{meal_type: dinner, title: "Laxpasta med spenat", drive_file_id: "r_laxpasta", servings: 4}]}
+            - {day: 1, day_name: "Tisdag",  meals: [{meal_type: dinner, title: "Halloumiwok med nudlar", drive_file_id: "r_halloumi", servings: 4}]}
+            - {day: 2, day_name: "Onsdag",  meals: [{meal_type: dinner, title: "Linsgryta med kokos", drive_file_id: "r_linsgryta", servings: 4}]}
+    user: "Vi orkar inte laga fisk på måndag, byt till köttbullarna istället"
+    grade:
+      tool: swap_meal
+      tool_call_count: {tool: swap_meal, max: 1}
+      args_equal: {drive_file_id: "r_kottbullar"}
+      ids_from_set:
+        known: [r_laxpasta, r_linsgryta, r_kottbullar, r_halloumi, r_tacos,
+                r_fisksoppa, r_lasagne]
+        paths: [drive_file_id]

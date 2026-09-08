@@ -1,0 +1,137 @@
+suite: categorize_direct
+description: >
+  The same classification job as `categorize`, but asked the way FoodPlanner 3.0
+  would actually ask it: a direct scripted call with a strict output contract
+  and no tool list at all. The app already knows it wants categories, so there
+  is nothing for the model to decide about routing.
+
+  Run this against `categorize` to separate two very different failures:
+  "does not know which shelf" (a real blocker) from "knows, but will not emit a
+  tool call" (an integration choice you control). If direct mode scores far
+  higher, the categoriser should be a scripted call, not a chatbot tool.
+mode: json
+max_tokens: 8000
+system: |
+  Du klassificerar svenska matvaror efter var de står i en vanlig svensk
+  livsmedelsbutik.
+
+  Svara med ENDAST ett JSON-objekt, utan förklaring och utan kodstaket:
+  {"items": [{"name": "<varans namn exakt som det gavs>", "category": "<avdelning>"}]}
+
+  category måste vara EXAKT en av dessa åtta strängar:
+  frukt & grönt, bröd, mejeri, kött & fisk, fryst, skafferi, dryck, övrigt
+
+  Regler:
+  - Fryst vara hör till fryst, oavsett vad den innehåller.
+  - Non-food hör till övrigt.
+  - Hittar du ingen bra avdelning, använd övrigt. Hitta aldrig på en ny.
+
+cases:
+  - id: cd-basics
+    user: "gul lök, knäckebröd, kaffe, fiskpinnar, yoghurt, nötfärs, bananer, apelsinjuice"
+    grade:
+      categories:
+        "gul lök": "frukt & grönt"
+        "knäckebröd": "bröd"
+        "kaffe": "skafferi"
+        "fiskpinnar": "fryst"
+        "yoghurt": "mejeri"
+        "nötfärs": "kött & fisk"
+        "bananer": "frukt & grönt"
+        "apelsinjuice": "dryck"
+
+  - id: cd-edge-cases
+    user: "frysta räkor, diskmedel, kokosmjölk, färsk basilika, smör, tortillabröd, havredryck, toapapper"
+    grade:
+      categories:
+        "frysta räkor": "fryst"
+        "diskmedel": "övrigt"
+        "kokosmjölk": "skafferi"
+        "färsk basilika": "frukt & grönt"
+        "smör": "mejeri"
+        "tortillabröd": "bröd"
+        "havredryck": "dryck"
+        "toapapper": "övrigt"
+
+  - id: cd-brand-names
+    user: "Oatly iKaffe, Felix ketchup, Findus ärtor, Wasa Sport, Bregott, Zoégas Skånerost, Felix rödbetor, Yalla turkisk yoghurt"
+    grade:
+      categories:
+        "Oatly iKaffe": "dryck"
+        "Felix ketchup": "skafferi"
+        "Findus ärtor": "fryst"
+        "Wasa Sport": "bröd"
+        "Bregott": "mejeri"
+        "Zoégas Skånerost": "skafferi"
+        "Felix rödbetor": "skafferi"
+        "Yalla turkisk yoghurt": "mejeri"
+
+  - id: cd-form-decides-shelf
+    user: "färsk lax, gravad lax, frysta laxfiléer, färska jordgubbar, frysta jordgubbar, jordgubbssylt, färsk kycklingfilé, fryst kycklingfilé"
+    grade:
+      categories:
+        "färsk lax": "kött & fisk"
+        "gravad lax": "kött & fisk"
+        "frysta laxfiléer": "fryst"
+        "färska jordgubbar": "frukt & grönt"
+        "frysta jordgubbar": "fryst"
+        "jordgubbssylt": "skafferi"
+        "färsk kycklingfilé": "kött & fisk"
+        "fryst kycklingfilé": "fryst"
+
+  - id: cd-novel-products
+    user: "surdegsknäcke från Vretstorp, tahini, risvinäger, nduja, kombucha, bakplåtspapper, harissapasta, jäst"
+    grade:
+      categories:
+        "surdegsknäcke från Vretstorp": "bröd"
+        "tahini": "skafferi"
+        "risvinäger": "skafferi"
+        "nduja": "kött & fisk"
+        "kombucha": "dryck"
+        "bakplåtspapper": "övrigt"
+        "harissapasta": "skafferi"
+        "jäst": "mejeri"
+
+  - id: cd-no-invented-shelf
+    user: "blomkruka, batterier AA, tidning, blommor"
+    grade:
+      categories:
+        "blomkruka": "övrigt"
+        "batterier AA": "övrigt"
+        "tidning": "övrigt"
+        "blommor": "övrigt"
+
+  # A long batch: the app will send the whole uncategorized backlog at once, so
+  # consistency across 24 items in one call is what production actually needs.
+  - id: cd-long-batch
+    user: >
+      gul lök, knäckebröd, kaffe, fiskpinnar, yoghurt, nötfärs, bananer,
+      apelsinjuice, frysta räkor, diskmedel, kokosmjölk, färsk basilika, smör,
+      tortillabröd, havredryck, toapapper, Bregott, Findus ärtor, tahini,
+      kombucha, nduja, jäst, gravad lax, frysta jordgubbar
+    grade:
+      categories:
+        "gul lök": "frukt & grönt"
+        "knäckebröd": "bröd"
+        "kaffe": "skafferi"
+        "fiskpinnar": "fryst"
+        "yoghurt": "mejeri"
+        "nötfärs": "kött & fisk"
+        "bananer": "frukt & grönt"
+        "apelsinjuice": "dryck"
+        "frysta räkor": "fryst"
+        "diskmedel": "övrigt"
+        "kokosmjölk": "skafferi"
+        "färsk basilika": "frukt & grönt"
+        "smör": "mejeri"
+        "tortillabröd": "bröd"
+        "havredryck": "dryck"
+        "toapapper": "övrigt"
+        "Bregott": "mejeri"
+        "Findus ärtor": "fryst"
+        "tahini": "skafferi"
+        "kombucha": "dryck"
+        "nduja": "kött & fisk"
+        "jäst": "mejeri"
+        "gravad lax": "kött & fisk"
+        "frysta jordgubbar": "fryst"

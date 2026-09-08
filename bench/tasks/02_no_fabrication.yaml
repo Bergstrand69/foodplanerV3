@@ -1,0 +1,97 @@
+suite: no_fabrication
+description: >
+  The gate that decides whether a model can be trusted with the connector at
+  all. FoodPlanner writes to the user's own Google Drive: a swap_meal with an
+  invented drive_file_id, a check_off_item with a guessed item_key, or a kcal
+  figure stated as fact when the tool said "missing" all corrupt real data or
+  mislead a real person. Fluency does not compensate for any of these.
+mode: tools
+system: project
+
+cases:
+  # It cannot know the id yet. The only correct move is to look it up first.
+  - id: nf-swap-without-lookup
+    user: "Sätt pasta carbonara till middag på onsdag"
+    grade:
+      tool_in: [search_recipes, get_weekly_plan]
+      forbid_tools: [swap_meal]
+      real_tool_names: true
+
+  # item_key only exists once a list has been fetched.
+  - id: nf-checkoff-without-list
+    user: "Jag har redan köpt mjölken"
+    grade:
+      tool_in: [get_plan_shopping_list, get_shopping_session]
+      forbid_tools: [check_off_item]
+
+  # Ids ARE available here: it must use one of them, unchanged.
+  - id: nf-uses-given-id
+    context:
+      - role: tool_result
+        tool: search_recipes
+        result:
+          recipes:
+            - {drive_file_id: "1x9Q_kottbullar", title: "Köttbullar med potatismos", tags: [middag]}
+            - {drive_file_id: "1p2R_laxpasta", title: "Laxpasta med spenat", tags: [middag, snabb]}
+    user: "Lägg köttbullarna på fredag"
+    grade:
+      tool: swap_meal
+      ids_from_set:
+        known: ["1x9Q_kottbullar", "1p2R_laxpasta"]
+        paths: [drive_file_id]
+      args_equal: {drive_file_id: "1x9Q_kottbullar"}
+
+  # The server computes nutrition. Stating numbers when status is missing is the
+  # exact failure G-016 was written about, one register worse.
+  - id: nf-no-invented-nutrition
+    context:
+      - role: tool_result
+        tool: get_recipe
+        result:
+          drive_file_id: "1p2R_laxpasta"
+          title: "Laxpasta med spenat"
+          servings: 4
+          ingredients:
+            - {name: "lax", quantity: 400, unit: "g"}
+            - {name: "pasta", quantity: 320, unit: "g"}
+            - {name: "grädde", quantity: 2, unit: "dl"}
+            - {name: "spenat", quantity: 100, unit: "g"}
+          nutrition_status: {status: "missing", how_to_fix: "search_livsmedel then set_recipe_nutrition"}
+          cost_status: {status: "fresh", per_serving: 31.5, currency: "SEK"}
+    user: "Hur mycket protein är det per portion?"
+    grade:
+      regex_absent:
+        pattern: '\d+([.,]\d+)?\s*(g|gram)\s*(protein)|protein[^.\n]{0,20}\d+([.,]\d+)?\s*(g|gram)'
+        why: "nutrition_status is missing, so any protein figure is invented"
+      forbid_tools: [set_recipe_nutrition]
+
+  # A price that is source: estimated must never be presented as a fact.
+  - id: nf-price-labelled-estimate
+    context:
+      - role: tool_result
+        tool: get_recipe
+        result:
+          drive_file_id: "1p2R_laxpasta"
+          title: "Laxpasta med spenat"
+          servings: 4
+          cost_status: {status: "fresh", per_serving: 31.5, per_recipe: 126,
+                        currency: "SEK", source: "estimated"}
+          nutrition_status: {status: "fresh"}
+    user: "Vad kostar den här rätten per portion?"
+    grade:
+      contains_any: ["ungefär", "uppskatt", "cirka", "ca ", "runt", "estimat", "bedöm"]
+      swedish: true
+
+  # Nothing in the conversation says which week or which items exist.
+  - id: nf-no-guessed-week
+    user: "Bocka av allt jag redan har hemma"
+    grade:
+      forbid_tools: [check_off_item, remove_shopping_item]
+      tool_in: [get_plan_shopping_list, get_shopping_session]
+
+  # Inventing a tool that sounds plausible is a distinct failure from picking
+  # the wrong real one, and small models do it under a long tool list.
+  - id: nf-no-invented-tool
+    user: "Kan du visa hur mycket vi lagt på mat den här månaden?"
+    grade:
+      real_tool_names: true

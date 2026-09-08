@@ -1,0 +1,72 @@
+suite: long_context
+description: >
+  Where does a 64k window actually stop working? A real user's item book and
+  recipe collection arrive as one tool result, on top of ~6.5k tokens of tool
+  schema. These cases grow the payload until recall breaks: the needle is a
+  made-up item whose price and category cannot be guessed from world knowledge,
+  so a right answer proves the model read the middle of the document.
+
+  Run `python make_fixtures.py` once before this suite.
+mode: tools
+system: project
+
+cases:
+  - id: lc-needle-8k
+    context:
+      - role: tool_result
+        tool: get_prices
+        result_file: fixtures/itembook-8k.json
+    user: "Vad har jag för pris på surdegsknäcke från Vretstorp, och vilken avdelning ligger den i?"
+    grade:
+      contains_any: ["42,5", "42.5", "42,50", "42.50"]
+      regex: 'bröd'
+
+  - id: lc-needle-16k
+    context:
+      - role: tool_result
+        tool: get_prices
+        result_file: fixtures/itembook-16k.json
+    user: "Vad har jag för pris på surdegsknäcke från Vretstorp, och vilken avdelning ligger den i?"
+    grade:
+      contains_any: ["42,5", "42.5", "42,50", "42.50"]
+      regex: 'bröd'
+
+  - id: lc-needle-32k
+    context:
+      - role: tool_result
+        tool: get_prices
+        result_file: fixtures/itembook-32k.json
+    user: "Vad har jag för pris på surdegsknäcke från Vretstorp, och vilken avdelning ligger den i?"
+    grade:
+      contains_any: ["42,5", "42.5", "42,50", "42.50"]
+      regex: 'bröd'
+
+  # Recall is not the whole story: the instruction to act still has to survive
+  # the long payload. A model that answers the needle but forgets it must not
+  # invent a price for the SECOND item has lost the rules, not the data.
+  - id: lc-rules-survive-16k
+    context:
+      - role: tool_result
+        tool: get_prices
+        result_file: fixtures/itembook-16k.json
+    user: >
+      Vad kostar surdegsknäcke från Vretstorp, och vad kostar en påse
+      pistagenötter? Pistagenötterna har jag aldrig lagt in.
+    grade:
+      contains_any: ["42,5", "42.5", "42,50", "42.50"]
+      regex_absent:
+        pattern: 'pistage[^.\n]{0,60}\d+[.,]?\d*\s*(kr|sek)'
+        why: "pistachios are not in the item book, so any price for them is invented"
+      swedish: true
+
+  # The tool payload alone is ~6.5k tokens. With a big item book on top, does
+  # routing still work, or does the model stop calling tools entirely?
+  - id: lc-routing-under-load
+    context:
+      - role: tool_result
+        tool: get_prices
+        result_file: fixtures/itembook-16k.json
+    user: "Lägg till kaffefilter på inköpslistan"
+    grade:
+      tool: add_shopping_item
+      args_contain: {name: "kaffefilter"}

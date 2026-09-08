@@ -1,0 +1,164 @@
+suite: categorize
+description: >
+  The second job the AI genuinely owns. There is deliberately no name->category
+  table in FoodPlanner's code (categories.ts says so) because the space of
+  product names is open: a table covers "mjölk" and dies on "Oatly iKaffe" or
+  "surdegsknäcke från Vretstorp". A script CAN cache the answer per item once
+  it exists (the item book does exactly that), so the model is only ever asked
+  about names it has not seen before. That makes accuracy on novel names the
+  whole measurement.
+
+  An off-taxonomy string is a hard failure, not a near miss: the server rejects
+  the entire set_item_prices call, so one bad category loses the whole batch.
+mode: tools
+tools: [set_item_prices, get_prices]
+system: project
+
+cases:
+  # Everyday staples. A model that misses these cannot do the job at all.
+  - id: cat-basics
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["gul lök", "knäckebröd", "kaffe", "fiskpinnar", "yoghurt",
+                          "nötfärs", "bananer", "apelsinjuice"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "gul lök": "frukt & grönt"
+        "knäckebröd": "bröd"
+        "kaffe": "skafferi"
+        "fiskpinnar": "fryst"
+        "yoghurt": "mejeri"
+        "nötfärs": "kött & fisk"
+        "bananer": "frukt & grönt"
+        "apelsinjuice": "dryck"
+
+  # Where the Swedish store's layout decides, not the dictionary meaning:
+  # frozen beats the food type, non-food falls to övrigt, plant milk is dryck.
+  - id: cat-edge-cases
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["frysta räkor", "diskmedel", "kokosmjölk", "färsk basilika",
+                          "smör", "tortillabröd", "havredryck", "toapapper"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "frysta räkor": "fryst"
+        "diskmedel": "övrigt"
+        "kokosmjölk": "skafferi"
+        "färsk basilika": "frukt & grönt"
+        "smör": "mejeri"
+        "tortillabröd": "bröd"
+        "havredryck": "dryck"
+        "toapapper": "övrigt"
+
+  # Brand names, the case a lookup table can never win. The model has to know
+  # what the product IS before it can shelve it.
+  - id: cat-brand-names
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["Oatly iKaffe", "Felix ketchup", "Findus ärtor",
+                          "Wasa Sport", "Bregott", "Zoégas Skånerost",
+                          "Felix rödbetor", "Yalla turkisk yoghurt"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "Oatly iKaffe": "dryck"
+        "Felix ketchup": "skafferi"
+        "Findus ärtor": "fryst"
+        "Wasa Sport": "bröd"
+        "Bregott": "mejeri"
+        "Zoégas Skånerost": "skafferi"
+        "Felix rödbetor": "skafferi"
+        "Yalla turkisk yoghurt": "mejeri"
+
+  # Same food word, different shelf depending on the form. This is the pattern
+  # that makes a substring-matching script wrong rather than merely incomplete.
+  - id: cat-form-decides-shelf
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["färsk lax", "gravad lax", "frysta laxfiléer",
+                          "färska jordgubbar", "frysta jordgubbar", "jordgubbssylt",
+                          "färsk kycklingfilé", "fryst kycklingfilé"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "färsk lax": "kött & fisk"
+        "gravad lax": "kött & fisk"
+        "frysta laxfiléer": "fryst"
+        "färska jordgubbar": "frukt & grönt"
+        "frysta jordgubbar": "fryst"
+        "jordgubbssylt": "skafferi"
+        "färsk kycklingfilé": "kött & fisk"
+        "fryst kycklingfilé": "fryst"
+
+  # Genuinely novel names, the open-ended tail the item book cannot pre-seed.
+  - id: cat-novel-products
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["surdegsknäcke från Vretstorp", "tahini", "risvinäger",
+                          "nduja", "kombucha", "bakplåtspapper", "harissapasta",
+                          "jäst"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "surdegsknäcke från Vretstorp": "bröd"
+        "tahini": "skafferi"
+        "risvinäger": "skafferi"
+        "nduja": "kött & fisk"
+        "kombucha": "dryck"
+        "bakplåtspapper": "övrigt"
+        "harissapasta": "skafferi"
+        "jäst": "mejeri"
+
+  # A user-stated category is authoritative and must be flagged, so the model's
+  # own later guesses never overwrite what the user decided.
+  - id: cat-user-authority
+    user: "Lägg bakpulver i skafferi, det är där jag har det"
+    grade:
+      tool: set_item_prices
+      args_contain: {category: "skafferi", category_source: "user"}
+
+  # The model must never invent a shelf. The taxonomy is closed and the server
+  # rejects the whole call on one bad value, so övrigt is the correct escape.
+  - id: cat-no-invented-shelf
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          uncategorized: ["blomkruka", "batterier AA", "tidning", "blommor"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      categories:
+        "blomkruka": "övrigt"
+        "batterier AA": "övrigt"
+        "tidning": "övrigt"
+        "blommor": "övrigt"

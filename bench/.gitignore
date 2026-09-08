@@ -1,0 +1,4 @@
+results/
+fixtures/itembook-*.json
+__pycache__/
+*.pyc

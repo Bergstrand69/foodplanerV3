@@ -1,0 +1,135 @@
+suite: adherence
+description: >
+  FoodPlanner encodes hard-won behaviour in its tool descriptions (the gotchas
+  G-014 to G-020). Cost is fixed silently, nutrition is asked about first,
+  uncategorized items are classified in the same turn, and the card is the
+  deliverable so the text must not restate it. A model that reads these rules
+  but does not act on them is the G-016 failure, and it is invisible in any
+  generic benchmark.
+mode: tools
+system: project
+
+cases:
+  # cost_status missing -> fix it in the same turn, WITHOUT asking.
+  - id: ad-cost-fixed-silently
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_recipe
+        result:
+          drive_file_id: "1p2R_laxpasta"
+          title: "Laxpasta med spenat"
+          servings: 4
+          ingredients:
+            - {name: "lax", quantity: 400, unit: "g"}
+            - {name: "pasta", quantity: 320, unit: "g"}
+            - {name: "grädde", quantity: 2, unit: "dl"}
+          nutrition_status: {status: "fresh"}
+          cost_status: {status: "missing", missing_prices: ["lax", "pasta", "grädde"]}
+    user: "Visa laxpastan"
+    grade:
+      tool: set_item_prices
+      forbid_tools: [search_livsmedel, set_recipe_nutrition]
+
+  # Right after an import: price automatically, ASK before nutrition (task-064).
+  - id: ad-import-asks-before-nutrition
+    user_first: true
+    context:
+      - role: tool_result
+        tool: import_recipe
+        result:
+          drive_file_id: "1zz_kycklingpasta"
+          title: "Krispig kycklingpasta"
+          servings: 4
+          ingredients:
+            - {name: "kycklingfilé", quantity: 500, unit: "g"}
+            - {name: "pasta", quantity: 320, unit: "g"}
+            - {name: "crème fraiche", quantity: 2, unit: "dl"}
+          nutrition_status: {status: "missing"}
+          cost_status: {status: "missing", missing_prices: ["kycklingfilé", "pasta", "crème fraiche"]}
+    user: "Importera https://www.ica.se/recept/krispig-kycklingpasta-724019/"
+    grade:
+      forbid_tools: [search_livsmedel, set_recipe_nutrition]
+      asks_question: true
+      swedish: true
+
+  # Uncategorized lines -> classify immediately, no question asked.
+  - id: ad-categorizes-immediately
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          items:
+            - {item_key: "lax|g", name: "lax", quantity: 400, unit: "g", checked: false, category: "kött & fisk"}
+            - {item_key: "tandkram|piece", name: "tandkräm", quantity: 1, unit: "piece", checked: false, category: ""}
+            - {item_key: "kaffe|g", name: "kaffe", quantity: 500, unit: "g", checked: false, category: ""}
+          uncategorized: ["tandkräm", "kaffe"]
+    user: "Visa inköpslistan"
+    grade:
+      tool: set_item_prices
+      asks_question: false
+      regex_absent:
+        pattern: 'vill du att jag|ska jag kategorisera|är det ok'
+        why: "the tool says classify in the same turn without asking"
+
+  # The card renders the list. The text must not repeat it (G-008 / G-009).
+  - id: ad-brevity-over-card
+    user_first: true
+    context:
+      - role: tool_result
+        tool: get_plan_shopping_list
+        result:
+          week_start: "2026-09-07"
+          items:
+            - {item_key: "lax|g", name: "lax", quantity: 400, unit: "g", checked: false, category: "kött & fisk"}
+            - {item_key: "spenat|g", name: "spenat", quantity: 100, unit: "g", checked: false, category: "frukt & grönt"}
+            - {item_key: "gradde|dl", name: "grädde", quantity: 2, unit: "dl", checked: false, category: "mejeri"}
+            - {item_key: "pasta|g", name: "pasta", quantity: 320, unit: "g", checked: true, category: "skafferi"}
+            - {item_key: "citron|piece", name: "citron", quantity: 1, unit: "piece", checked: false, category: "frukt & grönt"}
+          uncategorized: []
+    user: "Visa veckans inköpslista"
+    grade:
+      max_chars: 320
+      contains_none: ["spenat", "grädde", "citron"]
+      swedish: true
+
+  # set_preferences REPLACES the list, so it must read the current one first.
+  - id: ad-prefs-read-before-write
+    user: "Kom ihåg att jag också är allergisk mot jordnötter"
+    grade:
+      tool: get_preferences
+
+  # known_mappings exist for two of three lines: only the third may be searched.
+  - id: ad-reuses-known-mappings
+    context:
+      - role: tool_result
+        tool: get_recipe
+        result:
+          drive_file_id: "1p2R_laxpasta"
+          title: "Laxpasta med spenat"
+          servings: 4
+          ingredients:
+            - {name: "lax", quantity: 400, unit: "g"}
+            - {name: "grädde", quantity: 2, unit: "dl"}
+            - {name: "picklad rödlök", quantity: 50, unit: "g"}
+          nutrition_status:
+            status: "missing"
+            known_mappings:
+              - {ingredient_index: 0, livsmedel_id: 1234, food_name: "Lax, odlad, rå"}
+              - {ingredient_index: 1, livsmedel_id: 5678, food_name: "Grädde 40%"}
+      - role: assistant
+        content: "Vill du att jag hämtar näringsvärden för laxpastan? Det tar en liten stund."
+    user: "Ja tack, hämta näringsvärden"
+    grade:
+      tool_call_count: {tool: search_livsmedel, min: 1, max: 2}
+      real_tool_names: true
+
+  # Swedish in, Swedish out, and no em dashes (the project's own style rule).
+  - id: ad-language-and-style
+    mode: chat
+    user: "Vad är skillnaden mellan veckans inköpslista och datumläget?"
+    grade:
+      swedish: true
+      no_em_dash: true

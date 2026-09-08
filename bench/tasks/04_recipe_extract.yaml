@@ -1,0 +1,171 @@
+suite: recipe_extract
+description: >
+  The job the AI actually owns in FoodPlanner 3.0: turning a messy human recipe
+  source into structured data. A script handles anything with schema.org JSON-LD
+  already, so every case here is deliberately a source no parser can touch,
+  ordered roughly by how hostile it is: pasted text, a TikTok caption, a spoken
+  transcript, a handwritten card, a comment thread.
+
+  Two checks matter more than the schema: `ingredients_include` (nothing the
+  source said may be dropped) and `ingredients_exclude` (nothing may be added
+  that the source never said). An invented ingredient becomes a real line on a
+  real shopping list.
+mode: tools
+tools: [save_recipe, update_recipe, search_recipes]
+system: project
+
+cases:
+  # Baseline: clean pasted text. If this fails, nothing below will work.
+  - id: rx-korvstroganoff
+    user: |
+      Här är ett recept jag fick av en kollega, spara det:
+
+      KORVSTROGANOFF (4 port)
+      400 g falukorv, 1 gul lök, 2 msk tomatpuré, 2 dl grädde, 1 dl vatten,
+      1 msk dijonsenap, 1 tsk paprikapulver, salt och peppar, ris till servering
+
+      Skär korven i stavar. Hacka löken. Stek korven i smör i en stor stekpanna
+      på medelvärme tills den får färg, ca 4 minuter. Tillsätt löken och stek
+      ytterligare 2 minuter. Rör ner tomatpurén och paprikapulvret och låt fräsa
+      en halv minut. Häll i grädde och vatten, rör i senapen och låt puttra utan
+      lock i 10 minuter. Smaka av med salt och peppar. Koka riset under tiden
+      enligt anvisningen på paketet. Servera korvstroganoffen över riset.
+    grade:
+      tool: save_recipe
+      recipe_json: {min_ingredients: 8, min_steps: 5}
+      args_contain: {title: "korvstroganoff"}
+      ingredients_include: [falukorv, [gul lök, lök], tomatpuré, grädde,
+                            [dijonsenap, senap], paprikapulver]
+      field_between: {path: servings, min: 4, max: 4}
+      placeholders: true
+
+  # A TikTok caption: emoji, hashtags, no punctuation, quantities as slang, and
+  # the method compressed into one breathless line.
+  - id: rx-tiktok-caption
+    user: |
+      Spara det här receptet åt mig:
+
+      POV: du har 20 min och typ inget hemma 🍝😮‍💨 krämig tomatpasta som RÄDDAR
+      veckan. ni tar en förp pasta (jag kör penne), en burk krossade tomater,
+      en rejäl skvätt grädde typ 2 dl, 3 vitlöksklyftor, en näve riven parmesan
+      och massa basilika på slutet 🌿 fräs vitlöken i olivolja, häll i tomaterna,
+      låt puttra 10 min, i med grädden, koka pastan under tiden, blanda ihop
+      allt och toppa med parmesan + basilika. tacka mig sen 🙏
+      #matlagning #snabbmat #pastarecept #fyp #veckansmiddag
+    grade:
+      tool: save_recipe
+      ingredients_include: [pasta, [krossade tomater, tomater], grädde, vitlök,
+                            parmesan, basilika, olivolja]
+      # Nothing in that caption mentions any of these. A model that "helpfully"
+      # completes the recipe puts them on a shopping list.
+      ingredients_exclude: [smör, gul lök, buljong, chiliflakes, socker]
+      recipe_json: {min_ingredients: 6, min_steps: 4}
+      ingredient_count: {min: 6, max: 10}
+
+  # A spoken transcript: filler words, self-correction, quantities as gestures,
+  # ingredients introduced mid-method rather than in a list.
+  - id: rx-video-transcript
+    user: |
+      Jag transkriberade en matlagningsvideo, kan du göra ett recept av det?
+
+      "okej hej allihopa idag ska vi göra min mammas ugnsbakade lax alltså den
+      är sjukt enkel. ni tar en laxsida typ 800 gram, lägger den på en plåt med
+      bakplåtspapper. sen blandar ni ihop... vänta jag tar skålen... ni blandar
+      typ en halv deciliter majonnäs, lika mycket creme fraiche, en pressad
+      vitlöksklyfta och en näve färsk dill som ni hackar. åh och lite citron,
+      typ ett halvt, både skalet och saften. bred på det där över laxen. in i
+      ugnen 200 grader i 20 minuter ungefär, den ska vara precis genomgången.
+      servera med kokt potatis. jättegott. hej då!"
+    grade:
+      tool: save_recipe
+      ingredients_include: [lax, majonnäs, [creme fraiche, crème fraiche, gräddfil],
+                            vitlök, dill, citron, potatis]
+      ingredients_exclude: [salt, peppar, smör, olivolja, senap]
+      recipe_json: {min_ingredients: 6, min_steps: 4}
+      # 800 g lax is roughly four portions; the source never says so outright.
+      field_between: {path: servings, min: 3, max: 6, optional: true}
+      regex_absent:
+        pattern: 'vänta jag tar skålen|hej då|allihopa'
+        why: "spoken filler must not survive into the recipe file"
+
+  # A handwritten card as OCR text: old-fashioned units, no method at all beyond
+  # a terse note, and a scanning error the model has to read past.
+  - id: rx-handwritten-card
+    user: |
+      Jag scannade mormors receptkort, texten blev lite skev:
+
+      Mormors sockerkaka
+      3 ägg, 3 dl socker, 3 dl vetemj0l, 1,5 tsk bakpulver,
+      100 g smör, 1 dl mjölk, 2 tsk vaniljsocker
+      Vispa ägg o socker pösigt. Blanda i det torra. Smält smöret,
+      rör i mjölken, vänd ner. Ugn 175 gr, 40 min i smord form.
+    grade:
+      tool: save_recipe
+      ingredients_include: [ägg, socker, [vetemjöl, mjöl], bakpulver, smör,
+                            mjölk, vaniljsocker]
+      ingredients_exclude: [salt, kanel, grädde]
+      recipe_json: {min_ingredients: 7, min_steps: 3}
+      # "vetemj0l" with a zero must be read as vetemjöl, not saved verbatim.
+      regex_absent: {pattern: 'vetemj0l', why: "OCR artefact copied through"}
+
+  # The recipe is split across a caption and its comment thread, mixed with
+  # noise. Picking the recipe out of the chatter is the whole task.
+  - id: rx-comment-thread
+    user: |
+      Receptet ligger i kommentarerna på det här inlägget, kan du få ihop det?
+
+      Inlägg: "Bästa linsgrytan jag gjort 🧡 recept i kommentarerna!"
+      @sara_k: "Åh den ser fantastisk ut!!"
+      @matglad: "receptet tack 🙏🙏"
+      @original_poster: "Här kommer det! 3 dl röda linser, 1 gul lök, 2 morötter,
+        1 burk kokosmjölk, 2 msk röd currypaste, 5 dl grönsaksbuljong,
+        1 msk rapsolja. Fräs lök och morot i oljan 5 min, i med currypastan,
+        sen linser, kokosmjölk och buljong. Koka 20 min tills linserna är mjuka.
+        Smaka av med lime."
+      @sara_k: "Går det med gula linser?"
+      @original_poster: "Absolut, men de blir mosigare"
+      @kalle99: "gjorde denna igår, 10/10"
+    grade:
+      tool: save_recipe
+      ingredients_include: [[röda linser, linser], [gul lök, lök], morötter,
+                            kokosmjölk, [currypaste, currypasta, röd currypaste],
+                            buljong, rapsolja, lime]
+      # The follow-up comment is a variation, not part of the recipe.
+      ingredients_exclude: [gula linser, vitlök, ingefära, spenat]
+      recipe_json: {min_ingredients: 7, min_steps: 3}
+
+  # An edit must go through update_recipe with the WHOLE document resent, or
+  # Drive loses every omitted field.
+  - id: rx-update-keeps-everything
+    context:
+      - role: tool_result
+        tool: get_recipe
+        result:
+          drive_file_id: "1c4_pannkakor"
+          title: "Pannkakor"
+          description: "Tunna svenska pannkakor"
+          servings: 4
+          tags: [efterrätt, barnvänlig]
+          ingredients:
+            - {name: "vetemjöl", quantity: 3, unit: "dl"}
+            - {name: "mjölk", quantity: 6, unit: "dl"}
+            - {name: "ägg", quantity: 3, unit: "st"}
+            - {name: "salt", quantity: 0.5, unit: "tsk"}
+          steps:
+            - {title: "Vispa smeten", content: "Vispa ihop mjöl och halva mjölken till en slät smet."}
+            - {title: "Späd", content: "Rör ner resten av mjölken, äggen och saltet. Låt svälla 15 minuter."}
+            - {title: "Stek", content: "Stek tunna pannkakor i smör i het panna."}
+          notes: "Servera med sylt."
+          source_url: "https://example.se/pannkakor"
+          nutrition_status: {status: "fresh"}
+          cost_status: {status: "fresh"}
+    user: "Ändra så att det är 6 portioner istället, och lägg till taggen frukost"
+    grade:
+      tool: update_recipe
+      args_equal: {drive_file_id: "1c4_pannkakor", servings: 6}
+      args_contain:
+        title: "Pannkakor"
+        notes: "Servera med sylt"
+        source_url: "https://example.se/pannkakor"
+      ingredients_include: [vetemjöl, mjölk, ägg, salt]
+      recipe_json: {min_ingredients: 4, min_steps: 3}

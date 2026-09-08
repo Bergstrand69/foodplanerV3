@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Bench outputs: regenerate with `python run_bench.py`
+bench/results/
+*.log
+
+# Generated fixtures: rebuild with `python make_fixtures.py`
+bench/fixtures/itembook-*.json
+
+# Secrets and local config
+.env
+.env.local
+*.key
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

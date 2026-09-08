@@ -1,0 +1,63 @@
+# Models under test. Anything speaking the OpenAI chat-completions shape works:
+# Ollama, LM Studio, llama.cpp server, vLLM, TGI, or a hosted OpenAI-compatible
+# endpoint. Add a block per model you want to compare.
+#
+#   base_url      : the /v1 root (no trailing /chat/completions)
+#   model         : the id the runtime expects
+#   context       : the window YOU configured (drives the budget warning)
+#   supports_tools: native function calling. false -> the bench injects the tool
+#                   list as text and parses the call back out, and the report
+#                   records which mode each answer actually used.
+#   strip_think   : drop <think>...</think> / reasoning_content before grading
+#   extra_body    : passed straight through, e.g. Ollama's num_ctx
+
+defaults:
+  temperature: 0.2
+  max_tokens: 6000        # reasoning models spend most of this inside <think>
+  timeout_s: 600          # a 64k prompt on CPU/consumer GPU is slow, not hung
+  supports_tools: true
+  strip_think: true
+
+models:
+  # Ollama defaults to a 4k context REGARDLESS of what the model supports, so
+  # num_ctx has to be set explicitly or every long_context case silently
+  # truncates and the scores are meaningless.
+  - name: glm-4.7-flash
+    base_url: http://localhost:11434/v1
+    model: glm-4.7-flash:latest
+    context: 65536
+    extra_body:
+      options:
+        num_ctx: 65536
+
+  - name: qwen3-4b
+    base_url: http://localhost:11434/v1
+    model: qwen3:4b-instruct-2507-q4_K_M
+    context: 32768
+    extra_body:
+      options:
+        num_ctx: 32768
+
+  - name: llama31-8b
+    base_url: http://localhost:11434/v1
+    model: llama3.1:8b
+    context: 32768
+    extra_body:
+      options:
+        num_ctx: 32768
+
+  # qwen3-coder is in the library too, but it is tuned for code rather than
+  # Swedish conversational tool use. Uncomment if you want the comparison.
+  # - name: qwen3-coder
+  #   base_url: http://localhost:11434/v1
+  #   model: qwen3-coder:latest
+  #   context: 32768
+  #   extra_body: {options: {num_ctx: 32768}}
+
+  # Reference ceiling: the behaviour FoodPlanner 2.0 was actually tuned against.
+  # Useful once, to see how far the local models are from the target.
+  # - name: claude-ref
+  #   base_url: https://api.anthropic.com/v1
+  #   model: claude-sonnet-5
+  #   api_key_env: ANTHROPIC_API_KEY
+  #   context: 200000

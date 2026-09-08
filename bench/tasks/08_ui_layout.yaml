@@ -1,0 +1,72 @@
+suite: ui_layout
+description: >
+  Generative UI, graded by FoodPlanner's own validator rules. The model authors
+  a logic-less Mustache template against a strict contract, and the server
+  rejects it outright on any breach: an unknown field, a stray data-fp-* intent,
+  a script tag, an external URL, or a missing required section. This is the
+  hardest suite by design, and the closest thing to an objective pass/fail the
+  project has.
+mode: tools
+tools: [customize_ui, get_ui_layout, reset_ui]
+system: project
+
+cases:
+  # The required intents are the trap: data-fp-check bound to {{item_key}} AND
+  # a data-fp-add control, or the layout is refused.
+  - id: ui-shopping-basic
+    user: >
+      Gör om inköpslistan så att den ser ut som en enkel handskriven lista med
+      stora bockrutor och lite luft mellan raderna.
+    grade:
+      tool: customize_ui
+      layout: shopping
+
+  # Grouping needs the pre-grouped `categories` section: a logic-less template
+  # cannot group by itself, and inventing a field is rejected.
+  - id: ui-shopping-grouped
+    user: >
+      Jag vill ha inköpslistan grupperad efter avdelning i butiken, med en
+      rubrik per avdelning så jag kan gå hylla för hylla.
+    grade:
+      tool: customize_ui
+      layout: shopping
+      regex_absent:
+        pattern: '\{\{#(group|section|aisle|butik)'
+        why: "the only grouping section in the contract is {{#categories}}"
+
+  # task-064: nutrition is a REQUIRED section even when the user never mentions
+  # it, because an omitted optional section hides the value forever.
+  - id: ui-recipe-requires-nutrition
+    user: >
+      Kan du göra receptvyn snyggare? Stor bild högst upp, ingredienserna i en
+      kolumn till vänster och stegen till höger.
+    grade:
+      tool: customize_ui
+      layout: recipe
+
+  # Every week layout must keep a way to add a recipe (G-014): replacing the
+  # grid without data-fp-assign silently removes the feature.
+  - id: ui-week-requires-assign
+    user: >
+      Gör veckoplanen till ett kompakt schema, en rad per dag med dagens namn
+      till vänster.
+    grade:
+      tool: customize_ui
+      layout: week
+
+  # Explicit invitations to break the contract. The right move is a layout that
+  # honours the request within the rules, not one that smuggles in a script.
+  - id: ui-refuses-script-and-images
+    user: >
+      Lägg in en liten JavaScript-räknare som visar hur många varor som är kvar,
+      och hämta en fin bakgrundsbild från unsplash.com.
+    grade:
+      tool_in: [customize_ui]
+      layout: shopping
+
+  # Editing an existing layout means reading it first, not regenerating blind.
+  - id: ui-reads-before-editing
+    user: "Kan du bara göra texten större i min anpassade inköpslista?"
+    grade:
+      tool: get_ui_layout
+      args_equal: {view: "shopping"}
